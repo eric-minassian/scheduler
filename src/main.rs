@@ -1,3 +1,7 @@
+use crate::scheduler::Scheduler;
+
+pub mod scheduler;
+
 fn main() {
-    println!("Hello, world!");
+    let mut scheduler = Scheduler::new();
 }
