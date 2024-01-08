@@ -1,15 +1,15 @@
-pub(crate) struct RCB {
-    inventory: u8,
-    state: u8,
-    waitlist: Vec<i32>,
+pub struct RCB {
+    pub inventory: usize,
+    pub units_available: usize,
+    pub waitlist: Vec<usize>,
 }
 
 impl RCB {
-    pub(crate) fn new(inventory: u8, state: u8, waitlist: Vec<i32>) -> Self {
+    pub fn new(inventory: usize) -> Self {
         Self {
             inventory,
-            state,
-            waitlist,
+            units_available: inventory,
+            waitlist: Vec::new(),
         }
     }
 }

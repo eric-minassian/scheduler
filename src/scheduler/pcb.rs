@@ -1,30 +1,24 @@
-pub(crate) enum PCBState {
+pub enum PCBState {
     READY,
     BLOCKED,
 }
 
-pub(crate) struct PCB {
-    state: PCBState,
-    priority: u8,
-    parent: i32,
-    children: Vec<i32>,
-    resources: Vec<i32>,
+pub struct PCB {
+    pub state: PCBState,
+    pub priority: usize,
+    pub parent: Option<usize>,
+    pub children: Vec<usize>,
+    pub resources: Vec<usize>,
 }
 
 impl PCB {
-    pub(crate) fn new(
-        state: PCBState,
-        priority: u8,
-        parent: i32,
-        children: Vec<i32>,
-        resources: Vec<i32>,
-    ) -> Self {
+    pub fn new(priority: usize, parent: Option<usize>) -> Self {
         Self {
-            state,
             priority,
             parent,
-            children,
-            resources,
+            state: PCBState::READY,
+            children: Vec::new(),
+            resources: Vec::new(),
         }
     }
 }
