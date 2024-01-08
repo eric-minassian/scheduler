@@ -198,7 +198,57 @@ impl Scheduler {
         let rid = rid as usize;
         let units = units as usize;
 
-        return None;
+        let rcb = match self.rcb_list.get_mut(rid) {
+            Some(rcb) => rcb,
+            None => return None,
+        };
+
+        {
+            let pcb = match &mut self.pcb_list[self.current] {
+                Some(pcb) => pcb,
+                None => return None,
+            };
+
+            // Remove (r, k) from i.resources
+            if let Some(pos) = pcb
+                .resources
+                .iter()
+                .position(|x| x.rid == rid && x.units == units)
+            {
+                pcb.resources.remove(pos);
+            } else {
+                return None;
+            }
+
+            // Add k to r.units_available
+            rcb.units_available += units;
+        }
+        // Unblock processes
+        let mut i = 0;
+        while i < rcb.waitlist.len() && rcb.units_available > 0 {
+            if rcb.waitlist[i].units <= rcb.units_available {
+                // Allocate
+                let pid = rcb.waitlist[i].pid;
+                let pcb = match &mut self.pcb_list[pid] {
+                    Some(pcb) => pcb,
+                    None => return None,
+                };
+                pcb.resources.push(PCBResource {
+                    rid,
+                    units: rcb.waitlist[i].units,
+                });
+                rcb.units_available -= rcb.waitlist[i].units;
+
+                // Unblock
+                pcb.state = PCBState::READY;
+                self.ready_list[pcb.priority].push(pid);
+                rcb.waitlist.remove(i);
+            } else {
+                i += 1;
+            }
+        }
+
+        return self.scheduler();
     }
 
     pub fn timeout(&mut self) -> Option<usize> {
