@@ -57,8 +57,19 @@ impl Scheduler {
 
         for pid in 0..self.pcb_list.len() {
             if self.pcb_list[pid].is_none() {
+                // Add To Current Process's Children List
+                let current_pcb = match &mut self.pcb_list[self.current] {
+                    Some(pcb) => pcb,
+                    None => return None,
+                };
+                current_pcb.children.push(pid);
+
+                // Create PCB
                 self.pcb_list[pid] = Some(PCB::new(priority, Some(self.current)));
+
+                // Add To Ready List
                 self.ready_list[priority].push(pid);
+
                 return self.scheduler();
             }
         }
@@ -91,16 +102,26 @@ impl Scheduler {
         // Cast pid to usize
         let pid = pid as usize;
 
-        // Get the PCB of the process to be destroyed
-        let pcb: &PCB = match &self.pcb_list[pid] {
-            Some(pcb) => pcb,
-            None => return None,
-        };
-
         // Check if the current process is the child of the process to be destroyed
         if !self.is_child(pid) {
             return None;
         }
+
+        // Destroy the children of the process to be destroyed
+        let pcb = match &self.pcb_list[pid] {
+            Some(pcb) => pcb,
+            None => return None,
+        };
+        let children = pcb.children.clone();
+        for child in children {
+            self.destroy(child as i32);
+        }
+
+        // Get the PCB of the process to be destroyed
+        let pcb = match &self.pcb_list[pid] {
+            Some(pcb) => pcb,
+            None => return None,
+        };
 
         // 1. Remove From The Ready List
         if let Some(pos) = self.ready_list[pcb.priority].iter().position(|&x| x == pid) {

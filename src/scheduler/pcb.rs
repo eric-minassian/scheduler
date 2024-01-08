@@ -1,13 +1,16 @@
+#[derive(Debug)]
 pub enum PCBState {
     READY,
     BLOCKED,
 }
 
+#[derive(Debug)]
 pub struct PCBResource {
     pub rid: usize,
     pub units: usize,
 }
 
+#[derive(Debug)]
 pub struct PCB {
     pub state: PCBState,
     pub priority: usize,
