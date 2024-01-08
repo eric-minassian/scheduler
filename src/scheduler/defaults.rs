@@ -22,11 +22,6 @@ pub fn pcb_list_default() -> [Option<PCB>; 16] {
     ]
 }
 
-pub fn rcb_list_default() -> [Option<RCB>; 4] {
-    [
-        Some(RCB::new(1)),
-        Some(RCB::new(1)),
-        Some(RCB::new(2)),
-        Some(RCB::new(3)),
-    ]
+pub fn rcb_list_default() -> [RCB; 4] {
+    [RCB::new(1), RCB::new(1), RCB::new(2), RCB::new(3)]
 }

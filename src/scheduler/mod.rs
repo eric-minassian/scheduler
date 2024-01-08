@@ -2,7 +2,8 @@ use crate::scheduler::defaults::{pcb_list_default, rcb_list_default};
 use crate::scheduler::pcb::PCB;
 use crate::scheduler::rcb::RCB;
 
-use self::pcb::PCBState;
+use self::pcb::{PCBResource, PCBState};
+use self::rcb::RCBResource;
 
 mod defaults;
 mod pcb;
@@ -11,7 +12,7 @@ mod rcb;
 pub struct Scheduler {
     current: usize,
     pcb_list: [Option<PCB>; 16],
-    rcb_list: [Option<RCB>; 4],
+    rcb_list: [RCB; 4],
     ready_list: [Vec<usize>; 3],
 }
 
@@ -25,11 +26,13 @@ impl Scheduler {
         }
     }
 
-    pub fn init(&mut self) {
+    pub fn init(&mut self) -> Option<usize> {
         self.current = 0;
         self.pcb_list = pcb_list_default();
         self.rcb_list = rcb_list_default();
         self.ready_list = [vec![0], Vec::new(), Vec::new()];
+
+        return Some(self.current);
     }
 
     fn scheduler(&mut self) -> Option<usize> {
@@ -63,21 +66,19 @@ impl Scheduler {
         return None;
     }
 
-    fn is_parent(&self, parent: usize, child: usize) -> bool {
-        let pcb = match &self.pcb_list[child] {
-            Some(pcb) => pcb,
+    fn is_child(&self, pid: usize) -> bool {
+        let parent_pid = match &self.pcb_list[pid] {
+            Some(pcb) => match pcb.parent {
+                Some(parent_id) => parent_id,
+                None => return false,
+            },
             None => return false,
         };
 
-        match pcb.parent {
-            Some(p) => {
-                if p == parent {
-                    return true;
-                }
-
-                return self.is_parent(parent, p);
-            }
-            None => return false,
+        if pid == self.current || parent_pid == self.current {
+            return true;
+        } else {
+            return self.is_child(parent_pid);
         }
     }
 
@@ -91,57 +92,41 @@ impl Scheduler {
         let pid = pid as usize;
 
         // Get the PCB of the process to be destroyed
-        let pcb = match &self.pcb_list[pid] {
+        let pcb: &PCB = match &self.pcb_list[pid] {
             Some(pcb) => pcb,
             None => return None,
         };
 
         // Check if the current process is the child of the process to be destroyed
-        if self.is_parent(pid, self.current) {
+        if !self.is_child(pid) {
             return None;
         }
 
-        // Remove From The Ready List
-        let priority = pcb.priority;
-        for i in 0..self.ready_list[priority].len() {
-            if self.ready_list[priority][i] == pid {
-                self.ready_list[priority].remove(i);
-                break;
-            }
+        // 1. Remove From The Ready List
+        if let Some(pos) = self.ready_list[pcb.priority].iter().position(|&x| x == pid) {
+            self.ready_list[pcb.priority].remove(pos);
         }
 
-        // Remove From The Parent's Children List
-        let parent = pcb.parent;
-        if let Some(parent) = parent {
-            let parent = match &mut self.pcb_list[parent] {
-                Some(parent) => parent,
+        // 2. Remove From The Parent's Children List
+        if let Some(parent) = pcb.parent {
+            let parent_pcb = match &mut self.pcb_list[parent] {
+                Some(parent_pcb) => parent_pcb,
                 None => return None,
             };
 
-            for i in 0..parent.children.len() {
-                if parent.children[i] == pid {
-                    parent.children.remove(i);
-                    break;
-                }
+            if let Some(pos) = parent_pcb.children.iter().position(|&x| x == pid) {
+                parent_pcb.children.remove(pos);
             }
         }
 
-        // Remove From The RCB's Waiting List
-        for i in 0..self.rcb_list.len() {
-            let rcb = match &mut self.rcb_list[i] {
-                Some(rcb) => rcb,
-                None => return None,
-            };
-
-            for j in 0..rcb.waitlist.len() {
-                if rcb.waitlist[j] == pid {
-                    rcb.waitlist.remove(j);
-                    break;
-                }
+        // 3. Remove From The RCB's Waiting List
+        self.rcb_list.iter_mut().for_each(|rcb| {
+            if let Some(pos) = rcb.waitlist.iter().position(|x| x.pid == pid) {
+                rcb.waitlist.remove(pos);
             }
-        }
+        });
 
-        // Remove From The PCB List
+        // 4. Remove From The PCB List
         self.pcb_list[pid] = None;
 
         return self.scheduler();
@@ -161,40 +146,42 @@ impl Scheduler {
         let rid = rid as usize;
         let units = units as usize;
 
-        let rcb = match &mut self.rcb_list[rid] {
-            Some(rcb) => rcb,
-            None => return None,
-        };
-
         let pcb = match &mut self.pcb_list[self.current] {
             Some(pcb) => pcb,
             None => return None,
         };
+        let rcb = match self.rcb_list.get_mut(rid) {
+            Some(rcb) => rcb,
+            None => return None,
+        };
 
         if rcb.units_available < units {
-            // Block the current process
+            // Block
+            pcb.state = PCBState::BLOCKED;
 
-            // Remove the current process from the ready list
-            let priority = pcb.priority;
-            for i in 0..self.ready_list[priority].len() {
-                if self.ready_list[priority][i] == self.current {
-                    self.ready_list[priority].remove(i);
-                    break;
+            match self.ready_list[pcb.priority]
+                .iter_mut()
+                .position(|x| *x == self.current)
+            {
+                Some(pos) => {
+                    self.ready_list[pcb.priority].remove(pos);
                 }
+                None => return None,
             }
 
-            pcb.state = PCBState::BLOCKED;
-            rcb.waitlist.push(self.current);
+            rcb.waitlist.push(RCBResource {
+                pid: self.current,
+                units,
+            });
 
             return self.scheduler();
         }
 
+        // Allocate
+        pcb.resources.push(PCBResource { rid, units });
         rcb.units_available -= units;
 
-        // Update the current process
-        pcb.resources[rid] += units;
-
-        return None;
+        return self.scheduler();
     }
 
     pub fn release(&mut self, rid: i32, units: i32) -> Option<usize> {

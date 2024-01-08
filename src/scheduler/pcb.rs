@@ -3,12 +3,17 @@ pub enum PCBState {
     BLOCKED,
 }
 
+pub struct PCBResource {
+    pub rid: usize,
+    pub units: usize,
+}
+
 pub struct PCB {
     pub state: PCBState,
     pub priority: usize,
     pub parent: Option<usize>,
     pub children: Vec<usize>,
-    pub resources: Vec<usize>,
+    pub resources: Vec<PCBResource>,
 }
 
 impl PCB {

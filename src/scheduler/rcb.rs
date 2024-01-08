@@ -1,7 +1,12 @@
+pub struct RCBResource {
+    pub pid: usize,
+    pub units: usize,
+}
+
 pub struct RCB {
     pub inventory: usize,
     pub units_available: usize,
-    pub waitlist: Vec<usize>,
+    pub waitlist: Vec<RCBResource>,
 }
 
 impl RCB {
