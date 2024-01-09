@@ -199,120 +199,152 @@ impl Scheduler {
         Some(self.scheduler())
     }
 
-    pub fn request(&mut self, rid: i32, units: i32) -> Option<usize> {
-        // Bounds check
-        if rid < 0 || rid > 3 {
+    pub fn request(&mut self, rid: usize, units: usize) -> Option<usize> {
+        // Bounds Check
+        if rid >= self.rcb_list.len() {
+            eprintln!("REQUEST: RID Out Of Bounds");
             return None;
         }
 
-        if units < 0 {
+        if units == 0 {
+            eprintln!("REQUEST: Units Cannot Be 0");
             return None;
         }
-
-        // Cast rid and units to usize
-        let rid = rid as usize;
-        let units = units as usize;
 
         let pcb = match &mut self.pcb_list[self.current] {
             Some(pcb) => pcb,
-            None => return None,
+            None => {
+                panic!("REQUEST: Current PCB should exist.");
+            }
         };
         let rcb = match self.rcb_list.get_mut(rid) {
             Some(rcb) => rcb,
-            None => return None,
+            None => {
+                eprintln!("REQUEST: RCB Does Not Exist");
+                return None;
+            }
         };
 
         if rcb.units_available < units {
-            // Block
+            // BLOCK
+
+            // Update PCB State To Blocked
             pcb.state = PCBState::BLOCKED;
 
+            // Remove From Ready List
             match self.ready_list[pcb.priority]
-                .iter_mut()
-                .position(|x| *x == self.current)
+                .iter()
+                .position(|&x| x == self.current)
             {
                 Some(pos) => {
                     self.ready_list[pcb.priority].remove(pos);
                 }
-                None => return None,
+                None => {
+                    panic!("REQUEST: Current process should be in the ready list.");
+                }
             }
 
+            // Add To RCB Waitlist
             rcb.waitlist.push(RCBResource {
                 pid: self.current,
                 units,
             });
 
+            println!("process {} blocked", self.current);
+
             return Some(self.scheduler());
         }
 
-        // Allocate
+        // ALLOCATE
         pcb.resources.push(PCBResource { rid, units });
         rcb.units_available -= units;
+
+        println!("process {} allocated", self.current);
 
         return Some(self.scheduler());
     }
 
     pub fn release(&mut self, rid: usize, units: usize) -> Option<usize> {
-        // Bounds check
+        // Bounds Check
         if rid >= self.rcb_list.len() {
+            eprintln!("RELEASE: RID Out Of Bounds");
             return None;
         }
 
         if units == 0 {
+            eprintln!("RELEASE: Units Cannot Be 0");
             return None;
         }
 
-        // Get rcb
+        // Get RCB
         let rcb = match self.rcb_list.get_mut(rid) {
             Some(rcb) => rcb,
-            None => return None,
-        };
-
-        {
-            let pcb = match &mut self.pcb_list[self.current] {
-                Some(pcb) => pcb,
-                None => return None,
-            };
-
-            // Remove (r, k) from i.resources
-            if let Some(pos) = pcb
-                .resources
-                .iter()
-                .position(|x| x.rid == rid && x.units == units)
-            {
-                pcb.resources.remove(pos);
-            } else {
+            None => {
+                eprintln!("RELEASE: RCB Does Not Exist");
                 return None;
             }
+        };
 
-            // Add k to r.units_available
-            rcb.units_available += units;
-        }
-        // Unblock processes
+        let pcb = match &mut self.pcb_list[self.current] {
+            Some(pcb) => pcb,
+            None => {
+                panic!("RELEASE: Current PCB should exist.");
+            }
+        };
+
+        // Remove Resource From PCB
+        match pcb
+            .resources
+            .iter()
+            .position(|x| x.rid == rid && x.units == units)
+        {
+            Some(pos) => pcb.resources.remove(pos),
+            None => {
+                eprintln!("RELEASE: Resource Does Not Exist");
+                return None;
+            }
+        };
+
+        // Add Units To RCB
+        rcb.units_available += units;
+
+        // Unblock Processes
         let mut i = 0;
         while i < rcb.waitlist.len() && rcb.units_available > 0 {
             if rcb.waitlist[i].units <= rcb.units_available {
-                // Allocate
-                let pid = rcb.waitlist[i].pid;
-                let pcb = match &mut self.pcb_list[pid] {
-                    Some(pcb) => pcb,
-                    None => return None,
-                };
-                pcb.resources.push(PCBResource {
-                    rid,
-                    units: rcb.waitlist[i].units,
-                });
-                rcb.units_available -= rcb.waitlist[i].units;
+                let temp_pid = rcb.waitlist[i].pid;
+                let temp_units = rcb.waitlist[i].units;
 
-                // Unblock
-                pcb.state = PCBState::READY;
-                self.ready_list[pcb.priority].push(pid);
+                let temp_pcb = match &mut self.pcb_list[temp_pid] {
+                    Some(pcb) => pcb,
+                    None => {
+                        panic!("RELEASE: PCB should exist.");
+                    }
+                };
+
+                // Add Resource To PCB
+                temp_pcb.resources.push(PCBResource {
+                    rid,
+                    units: temp_units,
+                });
+
+                // Remove Resource From RCB
+                rcb.units_available -= temp_units;
                 rcb.waitlist.remove(i);
+
+                // Add To Ready List
+                self.ready_list[temp_pcb.priority].push(temp_pid);
+                temp_pcb.state = PCBState::READY;
+
+                println!("process {} unblocked", temp_pid);
             } else {
                 i += 1;
             }
         }
 
-        return Some(self.scheduler());
+        println!("process {} released", self.current);
+
+        Some(self.scheduler())
     }
 
     pub fn timeout(&mut self) -> Option<usize> {
@@ -332,6 +364,8 @@ impl Scheduler {
 
         priority_level_list.remove(0);
         priority_level_list.push(self.current);
+
+        println!("process {} timed out", self.current);
 
         Some(self.scheduler())
     }
