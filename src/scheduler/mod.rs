@@ -32,75 +32,84 @@ impl Scheduler {
         self.rcb_list = rcb_list_default();
         self.ready_list = [vec![0], Vec::new(), Vec::new()];
 
-        return Some(self.current);
+        Some(self.current)
     }
 
-    fn scheduler(&mut self) -> Option<usize> {
-        for priority in (0..self.ready_list.len()).rev() {
-            if !self.ready_list[priority].is_empty() {
-                self.current = self.ready_list[priority][0];
-                return Some(self.current);
-            }
-        }
+    /// Complete
+    fn scheduler(&mut self) -> usize {
+        self.current = self
+            .ready_list
+            .iter()
+            .rev()
+            .find(|list| !list.is_empty())
+            .expect("SCHEDULER: Ready List Shouldn't Be Empty")
+            .first()
+            .expect("SCHEDULER: Error Accessing First Element")
+            .clone();
 
-        return None;
+        self.current
     }
 
-    pub fn create(&mut self, priority: i32) -> Option<usize> {
+    /// Complete
+    pub fn create(&mut self, priority: usize) -> Option<usize> {
         // Bounds check
-        if priority < 0 || priority > 2 {
+        if priority >= self.ready_list.len() {
             return None;
         }
 
-        // Cast priority to usize
-        let priority = priority as usize;
+        // Find an empty PCB
+        let empty_pid = match self.pcb_list.iter().position(|x| x.is_none()) {
+            Some(pos) => pos,
+            None => return None,
+        };
 
-        for pid in 0..self.pcb_list.len() {
-            if self.pcb_list[pid].is_none() {
-                // Add To Current Process's Children List
-                let current_pcb = match &mut self.pcb_list[self.current] {
-                    Some(pcb) => pcb,
-                    None => return None,
-                };
-                current_pcb.children.push(pid);
+        // Add To Current Process's Children List
+        let current_pcb = self
+            .pcb_list
+            .get_mut(self.current)
+            .unwrap()
+            .as_mut()
+            .unwrap();
 
-                // Create PCB
-                self.pcb_list[pid] = Some(PCB::new(priority, Some(self.current)));
+        current_pcb.children.push(empty_pid);
 
-                // Add To Ready List
-                self.ready_list[priority].push(pid);
+        // Create PCB
+        self.pcb_list[empty_pid] = Some(PCB::new(priority, Some(self.current)));
 
-                return self.scheduler();
-            }
-        }
+        // Add To Ready List
+        self.ready_list[priority].push(empty_pid);
 
-        return None;
+        println!("process {} created", empty_pid);
+
+        Some(self.scheduler())
     }
 
     fn is_child(&self, pid: usize) -> bool {
-        let parent_pid = match &self.pcb_list[pid] {
-            Some(pcb) => match pcb.parent {
-                Some(parent_id) => parent_id,
+        // Bounds check
+        if pid >= self.pcb_list.len() {
+            return false;
+        }
+
+        match self.pcb_list[pid] {
+            Some(ref pcb) => match pcb.parent {
+                Some(parent_id) => {
+                    if parent_id == self.current || pid == self.current {
+                        return true;
+                    } else {
+                        return self.is_child(parent_id);
+                    }
+                }
                 None => return false,
             },
             None => return false,
-        };
-
-        if pid == self.current || parent_pid == self.current {
-            return true;
-        } else {
-            return self.is_child(parent_pid);
         }
     }
 
-    pub fn destroy(&mut self, pid: i32) -> Option<usize> {
+    pub fn destroy(&mut self, pid: usize) -> Option<usize> {
         // Bounds check
-        if pid < 0 || pid > 15 {
+        if pid >= self.pcb_list.len() {
             return None;
         }
-
-        // Cast pid to usize
-        let pid = pid as usize;
 
         // Check if the current process is the child of the process to be destroyed
         if !self.is_child(pid) {
@@ -114,7 +123,7 @@ impl Scheduler {
         };
         let children = pcb.children.clone();
         for child in children {
-            self.destroy(child as i32);
+            self.destroy(child);
         }
 
         // Get the PCB of the process to be destroyed
@@ -150,7 +159,7 @@ impl Scheduler {
         // 4. Remove From The PCB List
         self.pcb_list[pid] = None;
 
-        return self.scheduler();
+        Some(self.scheduler())
     }
 
     pub fn request(&mut self, rid: i32, units: i32) -> Option<usize> {
@@ -195,30 +204,27 @@ impl Scheduler {
                 units,
             });
 
-            return self.scheduler();
+            return Some(self.scheduler());
         }
 
         // Allocate
         pcb.resources.push(PCBResource { rid, units });
         rcb.units_available -= units;
 
-        return self.scheduler();
+        return Some(self.scheduler());
     }
 
-    pub fn release(&mut self, rid: i32, units: i32) -> Option<usize> {
+    pub fn release(&mut self, rid: usize, units: usize) -> Option<usize> {
         // Bounds check
-        if rid < 0 || rid > 3 {
+        if rid >= self.rcb_list.len() {
             return None;
         }
 
-        if units < 0 {
+        if units == 0 {
             return None;
         }
 
-        // Cast rid and units to usize
-        let rid = rid as usize;
-        let units = units as usize;
-
+        // Get rcb
         let rcb = match self.rcb_list.get_mut(rid) {
             Some(rcb) => rcb,
             None => return None,
@@ -269,15 +275,27 @@ impl Scheduler {
             }
         }
 
-        return self.scheduler();
+        return Some(self.scheduler());
     }
 
     pub fn timeout(&mut self) -> Option<usize> {
-        let priority = self.pcb_list[self.current].as_ref().unwrap().priority;
+        let priority = self.pcb_list[self.current].as_ref()?.priority;
 
-        self.ready_list[priority].remove(0);
-        self.ready_list[priority].push(self.current);
+        let priority_level_list = self.ready_list.get_mut(priority)?;
 
-        return self.scheduler();
+        if priority_level_list.is_empty() {
+            panic!(
+                "TIMEOUT: Priority level list shouldn't be empty. Should contain current process."
+            )
+        }
+
+        if priority_level_list[0] != self.current {
+            panic!("TIMEOUT: Current process should be at the top of the ready list.")
+        }
+
+        priority_level_list.remove(0);
+        priority_level_list.push(self.current);
+
+        Some(self.scheduler())
     }
 }
