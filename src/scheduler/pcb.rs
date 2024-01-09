@@ -4,7 +4,7 @@ pub enum PCBState {
     BLOCKED,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PCBResource {
     pub rid: usize,
     pub units: usize,

@@ -35,7 +35,6 @@ impl Scheduler {
         Some(self.current)
     }
 
-    /// Complete
     fn scheduler(&mut self) -> usize {
         self.current = self
             .ready_list
@@ -50,17 +49,20 @@ impl Scheduler {
         self.current
     }
 
-    /// Complete
     pub fn create(&mut self, priority: usize) -> Option<usize> {
         // Bounds check
         if priority >= self.ready_list.len() {
+            eprintln!("CREATE: Priority Out Of Bounds");
             return None;
         }
 
         // Find an empty PCB
         let empty_pid = match self.pcb_list.iter().position(|x| x.is_none()) {
             Some(pos) => pos,
-            None => return None,
+            None => {
+                eprintln!("CREATE: No Empty PCBs");
+                return None;
+            }
         };
 
         // Add To Current Process's Children List
@@ -84,19 +86,24 @@ impl Scheduler {
         Some(self.scheduler())
     }
 
-    fn is_child(&self, pid: usize) -> bool {
+    fn is_child_of_current_process(&self, pid: usize) -> bool {
         // Bounds check
         if pid >= self.pcb_list.len() {
             return false;
         }
 
-        match self.pcb_list[pid] {
-            Some(ref pcb) => match pcb.parent {
+        // Check if the current process is the child process
+        if pid == self.current {
+            return true;
+        }
+
+        match &self.pcb_list[pid] {
+            Some(pcb) => match pcb.parent {
                 Some(parent_id) => {
-                    if parent_id == self.current || pid == self.current {
+                    if parent_id == self.current {
                         return true;
                     } else {
-                        return self.is_child(parent_id);
+                        return self.is_child_of_current_process(parent_id);
                     }
                 }
                 None => return false,
@@ -106,58 +113,88 @@ impl Scheduler {
     }
 
     pub fn destroy(&mut self, pid: usize) -> Option<usize> {
-        // Bounds check
+        // Bounds Check
         if pid >= self.pcb_list.len() {
+            eprintln!("DESTROY: PID Out Of Bounds");
             return None;
         }
 
-        // Check if the current process is the child of the process to be destroyed
-        if !self.is_child(pid) {
+        // Don't Destroy Process 0
+        if pid == 0 {
+            eprintln!("DESTROY: Cannot Destroy Process 0");
             return None;
         }
 
-        // Destroy the children of the process to be destroyed
-        let pcb = match &self.pcb_list[pid] {
-            Some(pcb) => pcb,
-            None => return None,
+        // Only Destroy Child Processes
+        if !self.is_child_of_current_process(pid) {
+            eprintln!("DESTROY: PID Is Not A Child Of The Current Process");
+            return None;
+        }
+
+        // Recursively Destroy Children
+        let children = match &self.pcb_list[pid] {
+            Some(pcb) => pcb.children.clone(),
+            None => {
+                eprintln!("DESTROY: PID Does Not Exist");
+                return None;
+            }
         };
-        let children = pcb.children.clone();
-        for child in children {
+
+        children.iter().for_each(|&child| {
             self.destroy(child);
-        }
+        });
 
         // Get the PCB of the process to be destroyed
         let pcb = match &self.pcb_list[pid] {
             Some(pcb) => pcb,
-            None => return None,
+            None => {
+                eprintln!("DESTROY: PID Does Not Exist");
+                return None;
+            }
         };
 
-        // 1. Remove From The Ready List
+        // Remove From The Ready List
         if let Some(pos) = self.ready_list[pcb.priority].iter().position(|&x| x == pid) {
             self.ready_list[pcb.priority].remove(pos);
         }
 
-        // 2. Remove From The Parent's Children List
-        if let Some(parent) = pcb.parent {
-            let parent_pcb = match &mut self.pcb_list[parent] {
-                Some(parent_pcb) => parent_pcb,
-                None => return None,
-            };
+        // Remove From The Parent's Children List
+        match pcb.parent {
+            Some(parent) => {
+                let parent_pcb = self.pcb_list[parent]
+                    .as_mut()
+                    .expect("DESTROY: Parent PCB should exist.");
 
-            if let Some(pos) = parent_pcb.children.iter().position(|&x| x == pid) {
-                parent_pcb.children.remove(pos);
+                match parent_pcb.children.iter().position(|&x| x == pid) {
+                    Some(pos) => {
+                        parent_pcb.children.remove(pos);
+                    }
+                    None => {
+                        panic!("DESTROY: Child should be in parent's children list.");
+                    }
+                }
+            }
+            None => {
+                panic!("DESTROY: All processes should have a parent except process 0.");
             }
         }
 
-        // 3. Remove From The RCB's Waiting List
-        self.rcb_list.iter_mut().for_each(|rcb| {
-            if let Some(pos) = rcb.waitlist.iter().position(|x| x.pid == pid) {
-                rcb.waitlist.remove(pos);
-            }
+        // Release Resources
+        let current_pcb_resources = self.pcb_list[self.current]
+            .as_mut()
+            .expect("DESTROY: Current PCB should exist.")
+            .resources
+            .clone();
+
+        current_pcb_resources.iter().for_each(|resource| {
+            self.release(resource.rid, resource.units);
         });
 
-        // 4. Remove From The PCB List
+        // Remove From The PCB List
         self.pcb_list[pid] = None;
+
+        // TODO: Replace with "{n} processes destroyed"
+        println!("process {} destroyed", pid);
 
         Some(self.scheduler())
     }
