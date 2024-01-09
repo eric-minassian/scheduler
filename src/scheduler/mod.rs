@@ -5,15 +5,15 @@ use crate::scheduler::rcb::RCB;
 use self::pcb::{PCBResource, PCBState};
 use self::rcb::RCBResource;
 
-mod defaults;
-mod pcb;
-mod rcb;
+pub mod defaults;
+pub mod pcb;
+pub mod rcb;
 
 pub struct Scheduler {
-    current: usize,
-    pcb_list: [Option<PCB>; 16],
-    rcb_list: [RCB; 4],
-    ready_list: [Vec<usize>; 3],
+    pub current: usize,
+    pub pcb_list: [Option<PCB>; 16],
+    pub rcb_list: [RCB; 4],
+    pub ready_list: [Vec<usize>; 3],
 }
 
 impl Scheduler {

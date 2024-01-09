@@ -1,8 +1,7 @@
-use crate::scheduler::Scheduler;
 use std::fs::File;
 use std::io::{BufWriter, Write};
 
-pub mod scheduler;
+use scheduler::scheduler::Scheduler;
 
 fn main() -> std::io::Result<()> {
     let mut scheduler = Scheduler::new();

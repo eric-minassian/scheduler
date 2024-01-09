@@ -1,10 +1,10 @@
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct RCBResource {
     pub pid: usize,
     pub units: usize,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 
 pub struct RCB {
     pub inventory: usize,
