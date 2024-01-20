@@ -1,46 +1,69 @@
 use std::fs::File;
-use std::io::{BufWriter, Write};
+use std::io::{self, BufRead, Write};
+use std::path::Path;
 
 use scheduler::scheduler::Scheduler;
 
-fn main() -> std::io::Result<()> {
-    let mut scheduler = Scheduler::new();
-    let input = std::fs::read_to_string("input.txt")?;
+fn read_file(filename: &str) -> io::Result<Vec<Vec<Vec<String>>>> {
+    let path = Path::new(filename);
+    let file = File::open(path)?;
+    let reader = io::BufReader::new(file);
 
-    let mut output: Vec<Vec<Option<usize>>> = Vec::new();
-    let mut current_batch: Vec<Option<usize>> = Vec::new();
+    let mut instruction_vectors = Vec::new();
+    let mut current_vector = Vec::new();
 
-    for line in input.lines() {
-        let line = line.trim();
-
-        if line.is_empty() {
-            if !current_batch.is_empty() {
-                output.push(current_batch);
-                current_batch = Vec::new();
+    for line in reader.lines() {
+        let line: String = line?;
+        if line.trim().is_empty() {
+            if !current_vector.is_empty() {
+                instruction_vectors.push(current_vector);
+                current_vector = Vec::new();
             }
-            continue;
+        } else {
+            let words = line.split_whitespace().map(String::from).collect();
+            current_vector.push(words);
         }
+    }
 
-        let parts: Vec<&str> = line.split_whitespace().collect();
-        let result = match parts[0] {
+    if !current_vector.is_empty() {
+        instruction_vectors.push(current_vector);
+    }
+
+    Ok(instruction_vectors)
+}
+
+fn handle_instruction_vector(
+    scheduler: &mut Scheduler,
+    instruction_vector: &Vec<Vec<String>>,
+) -> Vec<Option<usize>> {
+    let mut output = Vec::new();
+
+    for instruction in instruction_vector {
+        let result = match instruction[0].as_str() {
             "in" => scheduler.init(),
-            "cr" => scheduler.create(parts[1].parse().unwrap()),
-            "de" => scheduler.destroy(parts[1].parse().unwrap()),
-            "rq" => scheduler.request(parts[1].parse().unwrap(), parts[2].parse().unwrap()),
-            "rl" => scheduler.release(parts[1].parse().unwrap(), parts[2].parse().unwrap()),
+            "cr" => scheduler.create(instruction[1].parse().unwrap()),
+            "de" => scheduler.destroy(instruction[1].parse().unwrap()),
+            "rq" => scheduler.request(
+                instruction[1].parse().unwrap(),
+                instruction[2].parse().unwrap(),
+            ),
+            "rl" => scheduler.release(
+                instruction[1].parse().unwrap(),
+                instruction[2].parse().unwrap(),
+            ),
             "to" => scheduler.timeout(),
             _ => None,
         };
 
-        current_batch.push(result);
+        output.push(result);
     }
 
-    if !current_batch.is_empty() {
-        output.push(current_batch);
-    }
+    output
+}
 
-    let output_file = File::create("output.txt")?;
-    let mut writer = BufWriter::new(output_file);
+fn write_output(filename: &str, output: Vec<Vec<Option<usize>>>) -> io::Result<()> {
+    let path = Path::new(filename);
+    let mut file = File::create(path)?;
 
     for batch in output {
         let batch_str = batch
@@ -49,8 +72,23 @@ fn main() -> std::io::Result<()> {
             .collect::<Vec<_>>()
             .join(" ");
 
-        writeln!(writer, "{}", batch_str)?;
+        writeln!(file, "{}", batch_str)?;
     }
+
+    Ok(())
+}
+
+fn main() -> std::io::Result<()> {
+    let mut scheduler = Scheduler::new();
+
+    let instruction_vectors = read_file("input.txt")?;
+
+    let output = instruction_vectors
+        .iter()
+        .map(|instruction_vector| handle_instruction_vector(&mut scheduler, instruction_vector))
+        .collect();
+
+    write_output("output.txt", output)?;
 
     Ok(())
 }

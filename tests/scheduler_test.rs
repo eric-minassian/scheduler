@@ -1,5 +1,6 @@
 use scheduler::scheduler::{
     defaults::{pcb_list_default, rcb_list_default},
+    rcb::RCBResource,
     Scheduler,
 };
 
@@ -152,6 +153,15 @@ fn process_0_cant_request() {
 }
 
 #[test]
+fn process_0_cant_destroy() {
+    let mut scheduler = Scheduler::new();
+
+    assert_eq!(scheduler.destroy(0), None);
+    assert_eq!(scheduler.current, 0);
+    assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), Vec::new()]);
+}
+
+#[test]
 fn bounds_check() {
     let mut scheduler = Scheduler::new();
 
@@ -160,6 +170,72 @@ fn bounds_check() {
     assert_eq!(scheduler.destroy(16), None);
 
     assert_eq!(scheduler.request(4, 1), None);
+    assert_eq!(scheduler.request(1, 0), None);
 
     assert_eq!(scheduler.release(4, 1), None);
+    assert_eq!(scheduler.release(3, 0), None);
+}
+
+#[test]
+fn multiple_releases() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(2); // Process 1
+    scheduler.create(2); // Process 2
+    scheduler.create(2); // Process 3
+
+    assert_eq!(scheduler.current, 1);
+    assert_eq!(scheduler.request(3, 3), Some(1));
+
+    scheduler.timeout();
+
+    assert_eq!(scheduler.current, 2);
+    assert_eq!(scheduler.request(3, 2), Some(3));
+
+    assert_eq!(scheduler.current, 3);
+    assert_eq!(scheduler.request(3, 1), Some(1));
+
+    assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), vec![1]]);
+
+    scheduler.release(3, 3);
+
+    assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), vec![1, 2, 3]]);
+}
+
+#[test]
+fn multiple_releases_with_skipping() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(2); // Process 1
+    scheduler.create(2); // Process 2
+    scheduler.create(2); // Process 3
+    scheduler.create(2); // Process 4
+
+    assert_eq!(scheduler.current, 1);
+    assert_eq!(scheduler.request(3, 2), Some(1));
+    assert_eq!(scheduler.request(3, 1), Some(1));
+
+    scheduler.timeout();
+
+    assert_eq!(scheduler.current, 2);
+    assert_eq!(scheduler.request(3, 3), Some(3));
+
+    assert_eq!(scheduler.current, 3);
+    assert_eq!(scheduler.request(3, 3), Some(4));
+
+    assert_eq!(scheduler.current, 4);
+    assert_eq!(scheduler.request(3, 2), Some(1));
+
+    assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), vec![1]]);
+
+    scheduler.release(3, 2);
+
+    assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), vec![1, 4]]);
+    assert_eq!(
+        scheduler.rcb_list[3].waitlist,
+        vec![
+            RCBResource { pid: 2, units: 3 },
+            RCBResource { pid: 3, units: 3 }
+        ]
+    );
 }
