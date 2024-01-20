@@ -211,6 +211,12 @@ impl Scheduler {
             return None;
         }
 
+        // Process 0 Can't Request
+        if self.current == 0 {
+            eprintln!("REQUEST: Process 0 Can't Request Resources");
+            return None;
+        }
+
         let pcb = match &mut self.pcb_list[self.current] {
             Some(pcb) => pcb,
             None => {
@@ -224,6 +230,11 @@ impl Scheduler {
                 return None;
             }
         };
+
+        if rcb.inventory < units {
+            eprintln!("REQUEST: Units Exceeds Max Inventory");
+            return None;
+        }
 
         if rcb.units_available < units {
             // BLOCK

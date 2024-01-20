@@ -64,3 +64,102 @@ fn test_scheduler_destroy() {
     assert_eq!(result, Some(0));
     assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), Vec::new()]);
 }
+
+// Common Errors
+
+#[test]
+fn more_than_n_processes() {
+    let mut scheduler = Scheduler::new();
+    let mut result;
+
+    for i in 0..15 {
+        result = scheduler.create(i % 3);
+        assert_ne!(result, None);
+    }
+
+    result = scheduler.create(2);
+    assert_eq!(result, None);
+
+    result = scheduler.destroy(3);
+    assert_ne!(result, None);
+
+    result = scheduler.create(2);
+    assert_ne!(result, None);
+}
+
+#[test]
+fn destroy_non_child() {
+    let mut scheduler = Scheduler::new();
+    let mut result;
+
+    scheduler.create(1);
+    scheduler.create(2);
+    scheduler.create(2);
+
+    result = scheduler.destroy(1);
+    assert_eq!(result, None);
+
+    result = scheduler.destroy(3);
+    assert_ne!(result, None);
+}
+
+#[test]
+fn request_nonexistent_resource() {
+    let mut scheduler = Scheduler::new();
+    let mut result;
+
+    scheduler.create(2);
+
+    result = scheduler.request(0, 1);
+    assert_ne!(result, None);
+
+    result = scheduler.request(4, 1);
+    assert_eq!(result, None);
+}
+
+#[test]
+fn request_more_resources_then_available() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(2);
+
+    let result = scheduler.request(0, 5);
+    assert_eq!(result, None);
+}
+
+#[test]
+fn release_process_not_holding() {
+    let mut scheduler = Scheduler::new();
+
+    assert_eq!(scheduler.create(2), Some(1));
+    assert_eq!(scheduler.request(2, 2), Some(1));
+    assert_eq!(scheduler.request(3, 3), Some(1));
+    assert_eq!(scheduler.create(2), Some(1));
+    assert_eq!(scheduler.timeout(), Some(2));
+    assert_eq!(scheduler.request(2, 1), Some(1));
+    assert_eq!(scheduler.release(2, 1), None);
+    assert_eq!(scheduler.release(2, 2), Some(1));
+    assert_eq!(scheduler.timeout(), Some(2));
+    assert_eq!(scheduler.release(3, 3), None);
+    assert_eq!(scheduler.release(2, 1), Some(2));
+}
+
+#[test]
+fn process_0_cant_request() {
+    let mut scheduler = Scheduler::new();
+
+    assert_eq!(scheduler.request(1, 1), None);
+}
+
+#[test]
+fn bounds_check() {
+    let mut scheduler = Scheduler::new();
+
+    assert_eq!(scheduler.create(3), None);
+
+    assert_eq!(scheduler.destroy(16), None);
+
+    assert_eq!(scheduler.request(4, 1), None);
+
+    assert_eq!(scheduler.release(4, 1), None);
+}
