@@ -81,8 +81,6 @@ impl Scheduler {
         // Add To Ready List
         self.ready_list[priority].push(empty_pid);
 
-        println!("process {} created", empty_pid);
-
         Some(self.scheduler())
     }
 
@@ -193,9 +191,6 @@ impl Scheduler {
         // Remove From The PCB List
         self.pcb_list[pid] = None;
 
-        // TODO: Replace with "{n} processes destroyed"
-        println!("process {} destroyed", pid);
-
         Some(self.scheduler())
     }
 
@@ -261,16 +256,12 @@ impl Scheduler {
                 units,
             });
 
-            println!("process {} blocked", self.current);
-
             return Some(self.scheduler());
         }
 
         // ALLOCATE
         pcb.resources.push(PCBResource { rid, units });
         rcb.units_available -= units;
-
-        println!("process {} allocated", self.current);
 
         return Some(self.scheduler());
     }
@@ -346,14 +337,10 @@ impl Scheduler {
                 // Add To Ready List
                 self.ready_list[temp_pcb.priority].push(temp_pid);
                 temp_pcb.state = PCBState::READY;
-
-                println!("process {} unblocked", temp_pid);
             } else {
                 i += 1;
             }
         }
-
-        println!("process {} released", self.current);
 
         Some(self.scheduler())
     }
@@ -375,8 +362,6 @@ impl Scheduler {
 
         priority_level_list.remove(0);
         priority_level_list.push(self.current);
-
-        println!("process {} timed out", self.current);
 
         Some(self.scheduler())
     }

@@ -239,3 +239,13 @@ fn multiple_releases_with_skipping() {
         ]
     );
 }
+
+#[test]
+fn deadlock() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(2);
+
+    assert_eq!(scheduler.request(3, 3), Some(1));
+    assert_eq!(scheduler.request(3, 3), Some(0));
+}
