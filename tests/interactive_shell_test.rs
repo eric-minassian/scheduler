@@ -9,3 +9,13 @@ fn test_interactive_shell() {
 
     assert_eq!(output, expected_output);
 }
+
+#[test]
+fn negative_values() {
+    interactive_shell("files/negative-input.txt", "files/negative-temp-output.txt").unwrap();
+
+    let output = std::fs::read_to_string("files/negative-temp-output.txt").unwrap();
+    let expected_output = std::fs::read_to_string("files/negative-output.txt").unwrap();
+
+    assert_eq!(output, expected_output);
+}

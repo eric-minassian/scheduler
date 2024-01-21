@@ -165,13 +165,21 @@ fn process_0_cant_destroy() {
 fn bounds_check() {
     let mut scheduler = Scheduler::new();
 
+    assert_eq!(scheduler.create(-1), None);
     assert_eq!(scheduler.create(3), None);
 
+    assert_eq!(scheduler.destroy(-1), None);
     assert_eq!(scheduler.destroy(16), None);
 
+    assert_eq!(scheduler.request(-1, 1), None);
+    assert_eq!(scheduler.request(1, -1), None);
+    assert_eq!(scheduler.request(-1, -1), None);
     assert_eq!(scheduler.request(4, 1), None);
     assert_eq!(scheduler.request(1, 0), None);
 
+    assert_eq!(scheduler.release(-1, 1), None);
+    assert_eq!(scheduler.release(1, -1), None);
+    assert_eq!(scheduler.release(-1, -1), None);
     assert_eq!(scheduler.release(4, 1), None);
     assert_eq!(scheduler.release(3, 0), None);
 }

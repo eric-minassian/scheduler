@@ -49,7 +49,9 @@ impl Scheduler {
         self.current
     }
 
-    pub fn create(&mut self, priority: usize) -> Option<usize> {
+    pub fn create(&mut self, priority: i32) -> Option<usize> {
+        let priority = usize::try_from(priority).ok()?;
+
         // Bounds check
         if priority >= self.ready_list.len() {
             eprintln!("CREATE: Priority Out Of Bounds");
@@ -110,7 +112,9 @@ impl Scheduler {
         }
     }
 
-    pub fn destroy(&mut self, pid: usize) -> Option<usize> {
+    pub fn destroy(&mut self, pid: i32) -> Option<usize> {
+        let pid = usize::try_from(pid).ok()?;
+
         // Bounds Check
         if pid >= self.pcb_list.len() {
             eprintln!("DESTROY: PID Out Of Bounds");
@@ -139,7 +143,7 @@ impl Scheduler {
         };
 
         children.iter().for_each(|&child| {
-            self.destroy(child);
+            self.destroy(child.try_into().unwrap());
         });
 
         // Get the PCB of the process to be destroyed
@@ -185,7 +189,10 @@ impl Scheduler {
             .clone();
 
         current_pcb_resources.iter().for_each(|resource| {
-            self.release(resource.rid, resource.units);
+            self.release(
+                resource.rid.try_into().unwrap(),
+                resource.units.try_into().unwrap(),
+            );
         });
 
         // Remove From The PCB List
@@ -194,7 +201,10 @@ impl Scheduler {
         Some(self.scheduler())
     }
 
-    pub fn request(&mut self, rid: usize, units: usize) -> Option<usize> {
+    pub fn request(&mut self, rid: i32, units: i32) -> Option<usize> {
+        let rid = usize::try_from(rid).ok()?;
+        let units = usize::try_from(units).ok()?;
+
         // Bounds Check
         if rid >= self.rcb_list.len() {
             eprintln!("REQUEST: RID Out Of Bounds");
@@ -266,7 +276,10 @@ impl Scheduler {
         return Some(self.scheduler());
     }
 
-    pub fn release(&mut self, rid: usize, units: usize) -> Option<usize> {
+    pub fn release(&mut self, rid: i32, units: i32) -> Option<usize> {
+        let rid = usize::try_from(rid).ok()?;
+        let units = usize::try_from(units).ok()?;
+
         // Bounds Check
         if rid >= self.rcb_list.len() {
             eprintln!("RELEASE: RID Out Of Bounds");

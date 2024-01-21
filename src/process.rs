@@ -38,6 +38,9 @@ fn handle_instruction_vector(
 ) -> Vec<Option<usize>> {
     let mut output = Vec::new();
 
+    // Reset Scheduler
+    scheduler.init();
+
     for instruction in instruction_vector {
         let result = match instruction[0].as_str() {
             "in" => scheduler.init(),
