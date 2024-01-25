@@ -1,13 +1,14 @@
 use scheduler::scheduler::{
     defaults::{pcb_list_default, rcb_list_default},
-    rcb::RCBResource,
+    pcb::{PCBResource, PCBState, PCB},
+    rcb::{RCBResource, RCB},
     Scheduler,
 };
 
 #[test]
 fn test_scheduler_new() {
     let scheduler = Scheduler::new();
-    assert_eq!(scheduler.current, 0);
+    assert_eq!(scheduler.running_pid, 0);
     assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), Vec::new()]);
     assert_eq!(scheduler.pcb_list, pcb_list_default());
     assert_eq!(scheduler.rcb_list, rcb_list_default());
@@ -27,7 +28,7 @@ fn test_scheduler_init() {
 
     let result = scheduler.init();
     assert_eq!(result, Some(0));
-    assert_eq!(scheduler.current, 0);
+    assert_eq!(scheduler.running_pid, 0);
     assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), Vec::new()]);
 }
 
@@ -35,24 +36,30 @@ fn test_scheduler_init() {
 fn test_scheduler_create() {
     let mut scheduler = Scheduler::new();
 
-    let result = scheduler.create(1);
-    assert_eq!(result, Some(1));
+    assert_eq!(scheduler.pcb_list[1], None);
+    assert_eq!(scheduler.create(1), Some(1));
     assert_eq!(scheduler.ready_list, [vec![0], vec![1], Vec::new()]);
+    assert_eq!(
+        scheduler.pcb_list[1].as_ref().unwrap(),
+        &PCB {
+            children: Vec::new(),
+            parent: Some(0),
+            priority: 1,
+            state: PCBState::READY,
+            resources: Vec::new()
+        }
+    );
 
-    let result = scheduler.create(2);
-    assert_eq!(result, Some(2));
+    assert_eq!(scheduler.create(2), Some(2));
     assert_eq!(scheduler.ready_list, [vec![0], vec![1], vec![2]]);
 
-    let result = scheduler.create(1);
-    assert_eq!(result, Some(2));
+    assert_eq!(scheduler.create(1), Some(2));
     assert_eq!(scheduler.ready_list, [vec![0], vec![1, 3], vec![2]]);
 
-    let result = scheduler.create(2);
-    assert_eq!(result, Some(2));
+    assert_eq!(scheduler.create(2), Some(2));
     assert_eq!(scheduler.ready_list, [vec![0], vec![1, 3], vec![2, 4]]);
 
-    let result = scheduler.create(0);
-    assert_eq!(result, Some(2));
+    assert_eq!(scheduler.create(0), Some(2));
     assert_eq!(scheduler.ready_list, [vec![0, 5], vec![1, 3], vec![2, 4]]);
 }
 
@@ -64,6 +71,94 @@ fn test_scheduler_destroy() {
     let result = scheduler.destroy(1);
     assert_eq!(result, Some(0));
     assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), Vec::new()]);
+}
+
+#[test]
+fn general_request() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(1);
+
+    assert_eq!(
+        scheduler.rcb_list[1],
+        RCB {
+            inventory: 1,
+            units_available: 1,
+            waitlist: Vec::new()
+        }
+    );
+    assert_eq!(scheduler.request(1, 1), Some(1));
+    assert_eq!(
+        scheduler.rcb_list[1],
+        RCB {
+            inventory: 1,
+            units_available: 0,
+            waitlist: Vec::new()
+        }
+    );
+    assert_eq!(
+        scheduler.pcb_list[1].as_ref().unwrap(),
+        &PCB {
+            children: Vec::new(),
+            parent: Some(0),
+            priority: 1,
+            state: PCBState::READY,
+            resources: vec![PCBResource { rid: 1, units: 1 }]
+        }
+    );
+
+    assert_eq!(scheduler.request(3, 2), Some(1));
+    assert_eq!(scheduler.request(1, 1), Some(0));
+
+    assert_eq!(
+        scheduler.rcb_list[1],
+        RCB {
+            inventory: 1,
+            units_available: 0,
+            waitlist: vec![RCBResource { pid: 1, units: 1 }]
+        }
+    );
+    assert_eq!(
+        scheduler.pcb_list[1].as_ref().unwrap(),
+        &PCB {
+            children: Vec::new(),
+            parent: Some(0),
+            priority: 1,
+            state: PCBState::BLOCKED,
+            resources: vec![
+                PCBResource { rid: 1, units: 1 },
+                PCBResource { rid: 3, units: 2 }
+            ]
+        }
+    );
+}
+
+#[test]
+fn general_release() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(1);
+    scheduler.request(1, 1);
+
+    assert_eq!(
+        scheduler.rcb_list[1],
+        RCB {
+            inventory: 1,
+            units_available: 0,
+            waitlist: Vec::new()
+        }
+    );
+
+    assert_eq!(scheduler.release(1, 1), Some(1));
+
+    assert_eq!(
+        scheduler.rcb_list[1],
+        RCB {
+            inventory: 1,
+            units_available: 1,
+            waitlist: Vec::new()
+        }
+    );
 }
 
 // Common Errors
@@ -157,7 +252,7 @@ fn process_0_cant_destroy() {
     let mut scheduler = Scheduler::new();
 
     assert_eq!(scheduler.destroy(0), None);
-    assert_eq!(scheduler.current, 0);
+    assert_eq!(scheduler.running_pid, 0);
     assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), Vec::new()]);
 }
 
@@ -192,15 +287,15 @@ fn multiple_releases() {
     scheduler.create(2); // Process 2
     scheduler.create(2); // Process 3
 
-    assert_eq!(scheduler.current, 1);
+    assert_eq!(scheduler.running_pid, 1);
     assert_eq!(scheduler.request(3, 3), Some(1));
 
     scheduler.timeout();
 
-    assert_eq!(scheduler.current, 2);
+    assert_eq!(scheduler.running_pid, 2);
     assert_eq!(scheduler.request(3, 2), Some(3));
 
-    assert_eq!(scheduler.current, 3);
+    assert_eq!(scheduler.running_pid, 3);
     assert_eq!(scheduler.request(3, 1), Some(1));
 
     assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), vec![1]]);
@@ -219,19 +314,19 @@ fn multiple_releases_with_skipping() {
     scheduler.create(2); // Process 3
     scheduler.create(2); // Process 4
 
-    assert_eq!(scheduler.current, 1);
+    assert_eq!(scheduler.running_pid, 1);
     assert_eq!(scheduler.request(3, 2), Some(1));
     assert_eq!(scheduler.request(3, 1), Some(1));
 
     scheduler.timeout();
 
-    assert_eq!(scheduler.current, 2);
+    assert_eq!(scheduler.running_pid, 2);
     assert_eq!(scheduler.request(3, 3), Some(3));
 
-    assert_eq!(scheduler.current, 3);
+    assert_eq!(scheduler.running_pid, 3);
     assert_eq!(scheduler.request(3, 3), Some(4));
 
-    assert_eq!(scheduler.current, 4);
+    assert_eq!(scheduler.running_pid, 4);
     assert_eq!(scheduler.request(3, 2), Some(1));
 
     assert_eq!(scheduler.ready_list, [vec![0], Vec::new(), vec![1]]);
@@ -256,4 +351,81 @@ fn deadlock() {
 
     assert_eq!(scheduler.request(3, 3), Some(1));
     assert_eq!(scheduler.request(3, 3), Some(0));
+}
+
+#[test]
+fn destroy_self() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(2);
+    scheduler.create(2);
+    assert_eq!(scheduler.destroy(2), Some(1));
+    assert_eq!(scheduler.destroy(1), Some(0));
+}
+
+#[test]
+fn destroy_self_with_children() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(2);
+    scheduler.create(2);
+    scheduler.create(2);
+    assert_eq!(scheduler.destroy(1), Some(0));
+}
+
+#[test]
+fn destroy_with_resources() {
+    let mut scheduler = Scheduler::new();
+
+    // Process 1 is parent of 2 and 3
+    // Process 2 has 3 units of resource 3
+    // Process 3 is waiting for 3 units of resource 3
+    scheduler.create(2);
+    scheduler.create(2);
+    scheduler.create(2);
+    scheduler.timeout();
+    scheduler.request(3, 3);
+    scheduler.timeout();
+    scheduler.request(3, 3);
+
+    assert_eq!(
+        scheduler.pcb_list[3].as_ref().unwrap(),
+        &PCB {
+            children: Vec::new(),
+            parent: Some(1),
+            priority: 2,
+            state: PCBState::BLOCKED,
+            resources: Vec::new()
+        }
+    );
+    assert_eq!(
+        scheduler.rcb_list[3],
+        RCB {
+            inventory: 3,
+            units_available: 0,
+            waitlist: vec![RCBResource { pid: 3, units: 3 }]
+        }
+    );
+
+    assert_eq!(scheduler.destroy(3), Some(1));
+    assert_eq!(scheduler.pcb_list[3], None);
+    assert_eq!(
+        scheduler.rcb_list[3],
+        RCB {
+            inventory: 3,
+            units_available: 0,
+            waitlist: Vec::new()
+        }
+    );
+
+    assert_eq!(scheduler.destroy(2), Some(1));
+    assert_eq!(scheduler.pcb_list[2], None);
+    assert_eq!(
+        scheduler.rcb_list[3],
+        RCB {
+            inventory: 3,
+            units_available: 3,
+            waitlist: Vec::new()
+        }
+    );
 }

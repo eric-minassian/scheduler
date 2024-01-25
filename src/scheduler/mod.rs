@@ -10,7 +10,7 @@ pub mod pcb;
 pub mod rcb;
 
 pub struct Scheduler {
-    pub current: usize,
+    pub running_pid: usize,
     pub pcb_list: [Option<PCB>; 16],
     pub rcb_list: [RCB; 4],
     pub ready_list: [Vec<usize>; 3],
@@ -19,7 +19,7 @@ pub struct Scheduler {
 impl Scheduler {
     pub fn new() -> Scheduler {
         Scheduler {
-            current: 0,
+            running_pid: 0,
             pcb_list: pcb_list_default(),
             rcb_list: rcb_list_default(),
             ready_list: [vec![0], Vec::new(), Vec::new()],
@@ -27,16 +27,16 @@ impl Scheduler {
     }
 
     pub fn init(&mut self) -> Option<usize> {
-        self.current = 0;
+        self.running_pid = 0;
         self.pcb_list = pcb_list_default();
         self.rcb_list = rcb_list_default();
         self.ready_list = [vec![0], Vec::new(), Vec::new()];
 
-        Some(self.current)
+        Some(self.running_pid)
     }
 
     fn scheduler(&mut self) -> usize {
-        self.current = self
+        self.running_pid = self
             .ready_list
             .iter()
             .rev()
@@ -46,7 +46,7 @@ impl Scheduler {
             .expect("SCHEDULER: Error Accessing First Element")
             .clone();
 
-        self.current
+        self.running_pid
     }
 
     pub fn create(&mut self, priority: i32) -> Option<usize> {
@@ -67,18 +67,15 @@ impl Scheduler {
             }
         };
 
-        // Add To Current Process's Children List
-        let current_pcb = self
-            .pcb_list
-            .get_mut(self.current)
-            .unwrap()
-            .as_mut()
-            .unwrap();
-
-        current_pcb.children.push(empty_pid);
-
         // Create PCB
-        self.pcb_list[empty_pid] = Some(PCB::new(priority, Some(self.current)));
+        self.pcb_list[empty_pid] = Some(PCB::new(priority, Some(self.running_pid)));
+
+        // Add To Parent's Children List
+        let parent_pcb = self.pcb_list[self.running_pid]
+            .as_mut()
+            .expect("CREATE: Parent PCB should exist.");
+
+        parent_pcb.children.push(empty_pid);
 
         // Add To Ready List
         self.ready_list[priority].push(empty_pid);
@@ -93,14 +90,14 @@ impl Scheduler {
         }
 
         // Check if the current process is the child process
-        if pid == self.current {
+        if pid == self.running_pid {
             return true;
         }
 
         match &self.pcb_list[pid] {
             Some(pcb) => match pcb.parent {
                 Some(parent_id) => {
-                    if parent_id == self.current {
+                    if parent_id == self.running_pid {
                         return true;
                     } else {
                         return self.is_child_of_current_process(parent_id);
@@ -182,17 +179,19 @@ impl Scheduler {
         }
 
         // Release Resources
-        let current_pcb_resources = self.pcb_list[self.current]
+        let pcb_2 = self.pcb_list[pid]
             .as_mut()
             .expect("DESTROY: Current PCB should exist.")
             .resources
             .clone();
 
-        current_pcb_resources.iter().for_each(|resource| {
-            self.release(
-                resource.rid.try_into().unwrap(),
-                resource.units.try_into().unwrap(),
-            );
+        pcb_2.iter().for_each(|resource| {
+            self.release_helper(pid, resource.rid, resource.units)
+                .unwrap();
+        });
+
+        self.rcb_list.iter_mut().for_each(|rcb| {
+            rcb.waitlist.retain(|x| x.pid != pid);
         });
 
         // Remove From The PCB List
@@ -217,12 +216,12 @@ impl Scheduler {
         }
 
         // Process 0 Can't Request
-        if self.current == 0 {
+        if self.running_pid == 0 {
             eprintln!("REQUEST: Process 0 Can't Request Resources");
             return None;
         }
 
-        let pcb = match &mut self.pcb_list[self.current] {
+        let pcb = match &mut self.pcb_list[self.running_pid] {
             Some(pcb) => pcb,
             None => {
                 panic!("REQUEST: Current PCB should exist.");
@@ -250,7 +249,7 @@ impl Scheduler {
             // Remove From Ready List
             match self.ready_list[pcb.priority]
                 .iter()
-                .position(|&x| x == self.current)
+                .position(|&x| x == self.running_pid)
             {
                 Some(pos) => {
                     self.ready_list[pcb.priority].remove(pos);
@@ -262,7 +261,7 @@ impl Scheduler {
 
             // Add To RCB Waitlist
             rcb.waitlist.push(RCBResource {
-                pid: self.current,
+                pid: self.running_pid,
                 units,
             });
 
@@ -274,6 +273,52 @@ impl Scheduler {
         rcb.units_available -= units;
 
         return Some(self.scheduler());
+    }
+
+    fn release_helper(&mut self, pid: usize, rid: usize, units: usize) -> Option<usize> {
+        let pcb = self.pcb_list.get_mut(pid)?.as_mut()?;
+
+        let rcb = self.rcb_list.get_mut(rid)?;
+
+        let position = pcb
+            .resources
+            .iter()
+            .position(|x| x.rid == rid && x.units == units)?;
+        pcb.resources.remove(position);
+
+        rcb.units_available += units;
+
+        let mut i = 0;
+        while i < rcb.waitlist.len() && rcb.units_available > 0 {
+            if rcb.waitlist[i].units <= rcb.units_available {
+                let temp_pid = rcb.waitlist[i].pid;
+                let temp_units = rcb.waitlist[i].units;
+
+                // println!("{:?}, {}", self.pcb_list[temp_pid], temp_pid);
+
+                let temp_pcb = self
+                    .pcb_list
+                    .get_mut(temp_pid)
+                    .expect("PCB should exist")
+                    .as_mut()
+                    .expect("PCB should exist");
+
+                temp_pcb.state = PCBState::READY;
+                temp_pcb.resources.push(PCBResource {
+                    rid,
+                    units: temp_units,
+                });
+
+                rcb.units_available -= temp_units;
+                rcb.waitlist.remove(i);
+
+                self.ready_list[temp_pcb.priority].push(temp_pid);
+            } else {
+                i += 1;
+            }
+        }
+
+        Some(self.scheduler())
     }
 
     pub fn release(&mut self, rid: i32, units: i32) -> Option<usize> {
@@ -291,75 +336,11 @@ impl Scheduler {
             return None;
         }
 
-        // Get RCB
-        let rcb = match self.rcb_list.get_mut(rid) {
-            Some(rcb) => rcb,
-            None => {
-                eprintln!("RELEASE: RCB Does Not Exist");
-                return None;
-            }
-        };
-
-        let pcb = match &mut self.pcb_list[self.current] {
-            Some(pcb) => pcb,
-            None => {
-                panic!("RELEASE: Current PCB should exist.");
-            }
-        };
-
-        // Remove Resource From PCB
-        match pcb
-            .resources
-            .iter()
-            .position(|x| x.rid == rid && x.units == units)
-        {
-            Some(pos) => pcb.resources.remove(pos),
-            None => {
-                eprintln!("RELEASE: Resource Does Not Exist");
-                return None;
-            }
-        };
-
-        // Add Units To RCB
-        rcb.units_available += units;
-
-        // Unblock Processes
-        let mut i = 0;
-        while i < rcb.waitlist.len() && rcb.units_available > 0 {
-            if rcb.waitlist[i].units <= rcb.units_available {
-                let temp_pid = rcb.waitlist[i].pid;
-                let temp_units = rcb.waitlist[i].units;
-
-                let temp_pcb = match &mut self.pcb_list[temp_pid] {
-                    Some(pcb) => pcb,
-                    None => {
-                        panic!("RELEASE: PCB should exist.");
-                    }
-                };
-
-                // Add Resource To PCB
-                temp_pcb.resources.push(PCBResource {
-                    rid,
-                    units: temp_units,
-                });
-
-                // Remove Resource From RCB
-                rcb.units_available -= temp_units;
-                rcb.waitlist.remove(i);
-
-                // Add To Ready List
-                self.ready_list[temp_pcb.priority].push(temp_pid);
-                temp_pcb.state = PCBState::READY;
-            } else {
-                i += 1;
-            }
-        }
-
-        Some(self.scheduler())
+        self.release_helper(self.running_pid, rid, units)
     }
 
     pub fn timeout(&mut self) -> Option<usize> {
-        let priority = self.pcb_list[self.current].as_ref()?.priority;
+        let priority = self.pcb_list[self.running_pid].as_ref()?.priority;
 
         let priority_level_list = self.ready_list.get_mut(priority)?;
 
@@ -369,12 +350,12 @@ impl Scheduler {
             )
         }
 
-        if priority_level_list[0] != self.current {
+        if priority_level_list[0] != self.running_pid {
             panic!("TIMEOUT: Current process should be at the top of the ready list.")
         }
 
         priority_level_list.remove(0);
-        priority_level_list.push(self.current);
+        priority_level_list.push(self.running_pid);
 
         Some(self.scheduler())
     }
