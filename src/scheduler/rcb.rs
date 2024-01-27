@@ -5,7 +5,6 @@ pub struct RCBResource {
 }
 
 #[derive(Debug, PartialEq, Eq)]
-
 pub struct RCB {
     pub inventory: usize,
     pub units_available: usize,
@@ -13,7 +12,8 @@ pub struct RCB {
 }
 
 impl RCB {
-    #[must_use] pub fn new(inventory: usize) -> Self {
+    #[must_use]
+    pub fn new(inventory: usize) -> Self {
         Self {
             inventory,
             units_available: inventory,

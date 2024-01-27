@@ -44,15 +44,15 @@ fn handle_instruction_vector(
     for instruction in instruction_vector {
         let result = match instruction[0].as_str() {
             "in" => scheduler.init(),
-            "cr" => scheduler.create(instruction[1].parse().unwrap()),
-            "de" => scheduler.destroy(instruction[1].parse().unwrap()),
+            "cr" => scheduler.create(instruction[1].parse().expect("Invalid Argument")),
+            "de" => scheduler.destroy(instruction[1].parse().expect("Invalid Argument")),
             "rq" => scheduler.request(
-                instruction[1].parse().unwrap(),
-                instruction[2].parse().unwrap(),
+                instruction[1].parse().expect("Invalid Argument"),
+                instruction[2].parse().expect("Invalid Argument"),
             ),
             "rl" => scheduler.release(
-                instruction[1].parse().unwrap(),
-                instruction[2].parse().unwrap(),
+                instruction[1].parse().expect("Invalid Argument"),
+                instruction[2].parse().expect("Invalid Argument"),
             ),
             "to" => scheduler.timeout(),
             _ => None,
@@ -64,7 +64,7 @@ fn handle_instruction_vector(
     output
 }
 
-fn write_output(filename: &str, output: Vec<Vec<Option<usize>>>) -> io::Result<()> {
+fn write_output(filename: &str, output: &[Vec<Option<usize>>]) -> io::Result<()> {
     let path = Path::new(filename);
     let file = File::create(path)?;
     let mut writer = BufWriter::new(file);
@@ -73,7 +73,10 @@ fn write_output(filename: &str, output: Vec<Vec<Option<usize>>>) -> io::Result<(
     for (i, batch) in output.iter().enumerate() {
         let batch_str = batch
             .iter()
-            .map(|i| i.map(|i| i.to_string()).unwrap_or(String::from("-1")))
+            .map(|i| {
+                i.map(|i| i.to_string())
+                    .unwrap_or_else(|| String::from("-1"))
+            })
             .collect::<Vec<_>>()
             .join(" ");
 
@@ -92,12 +95,12 @@ pub fn interactive_shell(input_filename: &str, output_filename: &str) -> io::Res
 
     let instruction_vectors = read_file(input_filename)?;
 
-    let output = instruction_vectors
+    let output: Vec<Vec<Option<usize>>> = instruction_vectors
         .iter()
         .map(|instruction_vector| handle_instruction_vector(&mut scheduler, instruction_vector))
         .collect();
 
-    write_output(output_filename, output)?;
+    write_output(output_filename, &output)?;
 
     Ok(())
 }

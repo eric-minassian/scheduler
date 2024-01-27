@@ -20,7 +20,8 @@ pub struct PCB {
 }
 
 impl PCB {
-    #[must_use] pub fn new(priority: usize, parent: Option<usize>) -> Self {
+    #[must_use]
+    pub fn new(priority: usize, parent: Option<usize>) -> Self {
         Self {
             priority,
             parent,

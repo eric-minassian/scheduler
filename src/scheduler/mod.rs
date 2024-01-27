@@ -23,7 +23,8 @@ impl Default for Scheduler {
 }
 
 impl Scheduler {
-    #[must_use] pub fn new() -> Self {
+    #[must_use]
+    pub fn new() -> Self {
         Self {
             running_pid: 0,
             pcb_list: pcb_list_default(),
