@@ -54,7 +54,7 @@ impl Scheduler {
 
         // Bounds check
         if priority >= self.ready_list.len() {
-            eprintln!("CREATE: Priority Out Of Bounds");
+            eprintln!("Priority Out Of Bounds");
             return None;
         }
 
@@ -62,7 +62,7 @@ impl Scheduler {
         let empty_pid = match self.pcb_list.iter().position(|x| x.is_none()) {
             Some(pos) => pos,
             None => {
-                eprintln!("CREATE: No Empty PCBs");
+                eprintln!("No Empty PCBs");
                 return None;
             }
         };
@@ -71,11 +71,11 @@ impl Scheduler {
         self.pcb_list[empty_pid] = Some(PCB::new(priority, Some(self.running_pid)));
 
         // Add To Parent's Children List
-        let parent_pcb = self.pcb_list[self.running_pid]
+        self.pcb_list[self.running_pid]
             .as_mut()
-            .expect("CREATE: Parent PCB should exist.");
-
-        parent_pcb.children.push(empty_pid);
+            .expect("Running PCB should exist.")
+            .children
+            .push(empty_pid);
 
         // Add To Ready List
         self.ready_list[priority].push(empty_pid);
@@ -235,6 +235,12 @@ impl Scheduler {
             }
         };
 
+        // let units_held = pcb
+        //     .resources
+        //     .iter()
+        //     .find(|&x| x.rid == rid)
+        //     .map_or(0, |resource| resource.units);
+
         if rcb.inventory < units {
             eprintln!("REQUEST: Units Exceeds Max Inventory");
             return None;
@@ -339,20 +345,29 @@ impl Scheduler {
         self.release_helper(self.running_pid, rid, units)
     }
 
+    /// # Panics
+    ///
+    /// Will panic if the scheduler data is corrupted from bug
     pub fn timeout(&mut self) -> Option<usize> {
-        let priority = self.pcb_list[self.running_pid].as_ref()?.priority;
+        let priority = self.pcb_list[self.running_pid]
+            .as_ref()
+            .expect("Running PCB should exist")
+            .priority;
 
-        let priority_level_list = self.ready_list.get_mut(priority)?;
+        let priority_level_list = self
+            .ready_list
+            .get_mut(priority)
+            .expect("Priority level list should exist");
 
-        if priority_level_list.is_empty() {
-            panic!(
-                "TIMEOUT: Priority level list shouldn't be empty. Should contain current process."
-            )
-        }
+        assert!(
+            !priority_level_list.is_empty(),
+            "Priority level list shouldn't be empty. Should contain current process."
+        );
 
-        if priority_level_list[0] != self.running_pid {
-            panic!("TIMEOUT: Current process should be at the top of the ready list.")
-        }
+        assert_eq!(
+            priority_level_list[0], self.running_pid,
+            "TIMEOUT: Current process should be at the top of the ready list."
+        );
 
         priority_level_list.remove(0);
         priority_level_list.push(self.running_pid);

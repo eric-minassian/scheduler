@@ -429,3 +429,25 @@ fn destroy_with_resources() {
         }
     );
 }
+
+// #[test]
+// fn add_requests() {
+//     let mut scheduler = Scheduler::new();
+
+//     scheduler.create(2);
+//     scheduler.request(3, 1);
+//     scheduler.request(3, 1);
+//     scheduler.request(3, 1);
+
+//     assert_eq!(
+//         scheduler.pcb_list[1].as_ref().unwrap().resources,
+//         vec![PCBResource { rid: 3, units: 3 }]
+//     );
+
+//     assert_eq!(scheduler.release(3, 3), Some(1));
+//     assert_eq!(
+//         scheduler.pcb_list[1].as_ref().unwrap().resources,
+//         Vec::new()
+//     );
+//     assert_eq!(scheduler.rcb_list[3].units_available, 3);
+// }
