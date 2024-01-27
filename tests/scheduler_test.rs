@@ -108,14 +108,14 @@ fn general_request() {
     );
 
     assert_eq!(scheduler.request(3, 2), Some(1));
-    assert_eq!(scheduler.request(1, 1), Some(0));
+    assert_eq!(scheduler.request(1, 1), None);
 
     assert_eq!(
         scheduler.rcb_list[1],
         RCB {
             inventory: 1,
             units_available: 0,
-            waitlist: vec![RCBResource { pid: 1, units: 1 }]
+            waitlist: Vec::new()
         }
     );
     assert_eq!(
@@ -124,7 +124,7 @@ fn general_request() {
             children: Vec::new(),
             parent: Some(0),
             priority: 1,
-            state: PCBState::BLOCKED,
+            state: PCBState::READY,
             resources: vec![
                 PCBResource { rid: 1, units: 1 },
                 PCBResource { rid: 3, units: 2 }
@@ -233,7 +233,7 @@ fn release_process_not_holding() {
     assert_eq!(scheduler.create(2), Some(1));
     assert_eq!(scheduler.timeout(), Some(2));
     assert_eq!(scheduler.request(2, 1), Some(1));
-    assert_eq!(scheduler.release(2, 1), None);
+    assert_eq!(scheduler.release(2, 3), None);
     assert_eq!(scheduler.release(2, 2), Some(1));
     assert_eq!(scheduler.timeout(), Some(2));
     assert_eq!(scheduler.release(3, 3), None);
@@ -350,7 +350,7 @@ fn deadlock() {
     scheduler.create(2);
 
     assert_eq!(scheduler.request(3, 3), Some(1));
-    assert_eq!(scheduler.request(3, 3), Some(0));
+    assert_eq!(scheduler.request(3, 3), None);
 }
 
 #[test]
@@ -430,24 +430,81 @@ fn destroy_with_resources() {
     );
 }
 
-// #[test]
-// fn add_requests() {
-//     let mut scheduler = Scheduler::new();
+#[test]
+fn add_requests() {
+    let mut scheduler = Scheduler::new();
 
-//     scheduler.create(2);
-//     scheduler.request(3, 1);
-//     scheduler.request(3, 1);
-//     scheduler.request(3, 1);
+    scheduler.create(2);
+    scheduler.request(3, 1);
+    scheduler.request(3, 1);
+    scheduler.request(3, 1);
 
-//     assert_eq!(
-//         scheduler.pcb_list[1].as_ref().unwrap().resources,
-//         vec![PCBResource { rid: 3, units: 3 }]
-//     );
+    assert_eq!(
+        scheduler.pcb_list[1].as_ref().unwrap().resources,
+        vec![PCBResource { rid: 3, units: 3 }]
+    );
 
-//     assert_eq!(scheduler.release(3, 3), Some(1));
-//     assert_eq!(
-//         scheduler.pcb_list[1].as_ref().unwrap().resources,
-//         Vec::new()
-//     );
-//     assert_eq!(scheduler.rcb_list[3].units_available, 3);
-// }
+    assert_eq!(scheduler.request(3, 1), None);
+
+    assert_eq!(
+        scheduler.pcb_list[1].as_ref().unwrap().resources,
+        vec![PCBResource { rid: 3, units: 3 }]
+    );
+
+    assert_eq!(scheduler.release(3, 3), Some(1));
+    assert_eq!(
+        scheduler.pcb_list[1].as_ref().unwrap().resources,
+        Vec::new()
+    );
+    assert_eq!(scheduler.rcb_list[3].units_available, 3);
+}
+
+#[test]
+fn multiple_requests() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(1);
+    scheduler.request(3, 1);
+    scheduler.create(2);
+    assert_eq!(scheduler.request(3, 2), Some(2));
+
+    assert_eq!(scheduler.request(3, 1), Some(1));
+    assert_eq!(
+        scheduler.pcb_list[2].as_ref().unwrap(),
+        &PCB {
+            children: Vec::new(),
+            parent: Some(1),
+            priority: 2,
+            state: PCBState::BLOCKED,
+            resources: vec![PCBResource { rid: 3, units: 2 }]
+        }
+    );
+    assert_eq!(
+        scheduler.rcb_list[3],
+        RCB {
+            inventory: 3,
+            units_available: 0,
+            waitlist: vec![RCBResource { pid: 2, units: 1 }]
+        }
+    );
+
+    assert_eq!(scheduler.release(3, 1), Some(2));
+    assert_eq!(
+        scheduler.pcb_list[2].as_ref().unwrap(),
+        &PCB {
+            children: Vec::new(),
+            parent: Some(1),
+            priority: 2,
+            state: PCBState::READY,
+            resources: vec![PCBResource { rid: 3, units: 3 }]
+        }
+    );
+    assert_eq!(
+        scheduler.rcb_list[3],
+        RCB {
+            inventory: 3,
+            units_available: 0,
+            waitlist: Vec::new()
+        }
+    );
+}

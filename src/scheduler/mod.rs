@@ -241,13 +241,10 @@ impl Scheduler {
             }
         };
 
-        // let units_held = pcb
-        //     .resources
-        //     .iter()
-        //     .find(|&x| x.rid == rid)
-        //     .map_or(0, |resource| resource.units);
+        let units_held_pos = pcb.resources.iter().position(|x| x.rid == rid);
+        let units_held = units_held_pos.map_or(0, |pos| pcb.resources[pos].units);
 
-        if rcb.inventory < units {
+        if rcb.inventory < units + units_held {
             eprintln!("REQUEST: Units Exceeds Max Inventory");
             return None;
         }
@@ -281,7 +278,15 @@ impl Scheduler {
         }
 
         // ALLOCATE
-        pcb.resources.push(PCBResource { rid, units });
+        match units_held_pos {
+            Some(pos) => {
+                pcb.resources[pos].units += units;
+            }
+            None => {
+                pcb.resources.push(PCBResource { rid, units });
+            }
+        }
+
         rcb.units_available -= units;
 
         Some(self.scheduler())
@@ -295,8 +300,13 @@ impl Scheduler {
         let position = pcb
             .resources
             .iter()
-            .position(|x| x.rid == rid && x.units == units)?;
-        pcb.resources.remove(position);
+            .position(|x| x.rid == rid && x.units >= units)?;
+
+        if pcb.resources[position].units > units {
+            pcb.resources[position].units -= units;
+        } else {
+            pcb.resources.remove(position);
+        }
 
         rcb.units_available += units;
 
@@ -306,8 +316,6 @@ impl Scheduler {
                 let temp_pid = rcb.waitlist[i].pid;
                 let temp_units = rcb.waitlist[i].units;
 
-                // println!("{:?}, {}", self.pcb_list[temp_pid], temp_pid);
-
                 let temp_pcb = self
                     .pcb_list
                     .get_mut(temp_pid)
@@ -315,11 +323,21 @@ impl Scheduler {
                     .as_mut()
                     .expect("PCB should exist");
 
+                let temp_units_held_pos = temp_pcb.resources.iter().position(|x| x.rid == rid);
+
+                match temp_units_held_pos {
+                    Some(pos) => {
+                        temp_pcb.resources[pos].units += temp_units;
+                    }
+                    None => {
+                        temp_pcb.resources.push(PCBResource {
+                            rid,
+                            units: temp_units,
+                        });
+                    }
+                }
+
                 temp_pcb.state = PCBState::READY;
-                temp_pcb.resources.push(PCBResource {
-                    rid,
-                    units: temp_units,
-                });
 
                 rcb.units_available -= temp_units;
                 rcb.waitlist.remove(i);
