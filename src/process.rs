@@ -78,9 +78,9 @@ fn write_output(filename: &str, output: Vec<Vec<Option<usize>>>) -> io::Result<(
             .join(" ");
 
         if i == last_index {
-            write!(writer, "{} ", batch_str)?;
+            write!(writer, "{batch_str} ")?;
         } else {
-            write!(writer, "{}\r\n", batch_str)?;
+            write!(writer, "{batch_str}\r\n")?;
         }
     }
 

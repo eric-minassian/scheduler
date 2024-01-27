@@ -16,9 +16,15 @@ pub struct Scheduler {
     pub ready_list: [Vec<usize>; 3],
 }
 
+impl Default for Scheduler {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Scheduler {
-    pub fn new() -> Scheduler {
-        Scheduler {
+    #[must_use] pub fn new() -> Self {
+        Self {
             running_pid: 0,
             pcb_list: pcb_list_default(),
             rcb_list: rcb_list_default(),
@@ -36,15 +42,14 @@ impl Scheduler {
     }
 
     fn scheduler(&mut self) -> usize {
-        self.running_pid = self
+        self.running_pid = *self
             .ready_list
             .iter()
             .rev()
             .find(|list| !list.is_empty())
             .expect("SCHEDULER: Ready List Shouldn't Be Empty")
             .first()
-            .expect("SCHEDULER: Error Accessing First Element")
-            .clone();
+            .expect("SCHEDULER: Error Accessing First Element");
 
         self.running_pid
     }
@@ -59,7 +64,7 @@ impl Scheduler {
         }
 
         // Find an empty PCB
-        let empty_pid = match self.pcb_list.iter().position(|x| x.is_none()) {
+        let empty_pid = match self.pcb_list.iter().position(std::option::Option::is_none) {
             Some(pos) => pos,
             None => {
                 eprintln!("No Empty PCBs");
@@ -98,14 +103,14 @@ impl Scheduler {
             Some(pcb) => match pcb.parent {
                 Some(parent_id) => {
                     if parent_id == self.running_pid {
-                        return true;
+                        true
                     } else {
-                        return self.is_child_of_current_process(parent_id);
+                        self.is_child_of_current_process(parent_id)
                     }
                 }
-                None => return false,
+                None => false,
             },
-            None => return false,
+            None => false,
         }
     }
 
@@ -139,9 +144,9 @@ impl Scheduler {
             }
         };
 
-        children.iter().for_each(|&child| {
+        for &child in &children {
             self.destroy(child.try_into().unwrap());
-        });
+        }
 
         // Get the PCB of the process to be destroyed
         let pcb = match &self.pcb_list[pid] {
@@ -185,10 +190,10 @@ impl Scheduler {
             .resources
             .clone();
 
-        pcb_2.iter().for_each(|resource| {
+        for resource in &pcb_2 {
             self.release_helper(pid, resource.rid, resource.units)
                 .unwrap();
-        });
+        }
 
         self.rcb_list.iter_mut().for_each(|rcb| {
             rcb.waitlist.retain(|x| x.pid != pid);
@@ -278,7 +283,7 @@ impl Scheduler {
         pcb.resources.push(PCBResource { rid, units });
         rcb.units_available -= units;
 
-        return Some(self.scheduler());
+        Some(self.scheduler())
     }
 
     fn release_helper(&mut self, pid: usize, rid: usize, units: usize) -> Option<usize> {

@@ -1,16 +1,16 @@
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub enum PCBState {
     READY,
     BLOCKED,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PCBResource {
     pub rid: usize,
     pub units: usize,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PCB {
     pub state: PCBState,
     pub priority: usize,
@@ -20,7 +20,7 @@ pub struct PCB {
 }
 
 impl PCB {
-    pub fn new(priority: usize, parent: Option<usize>) -> Self {
+    #[must_use] pub fn new(priority: usize, parent: Option<usize>) -> Self {
         Self {
             priority,
             parent,
