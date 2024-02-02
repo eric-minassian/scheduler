@@ -19,3 +19,13 @@ fn negative_values() {
 
     assert_eq!(output, expected_output);
 }
+
+#[test]
+fn provided_values() {
+    interactive_shell("files/provided-input.txt", "files/provided-temp-output.txt").unwrap();
+
+    let output = std::fs::read_to_string("files/provided-temp-output.txt").unwrap();
+    let expected_output = std::fs::read_to_string("files/provided-output.txt").unwrap();
+
+    assert_eq!(output, expected_output);
+}

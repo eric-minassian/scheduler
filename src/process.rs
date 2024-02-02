@@ -90,17 +90,34 @@ fn write_output(filename: &str, output: &[Vec<Option<usize>>]) -> io::Result<()>
     Ok(())
 }
 
-pub fn interactive_shell(input_filename: &str, output_filename: &str) -> io::Result<()> {
+pub fn interactive_shell(input_filename: &str, output_filename: &str) -> Result<(), &'static str> {
     let mut scheduler = Scheduler::new();
 
-    let instruction_vectors = read_file(input_filename)?;
+    let instruction_vectors = match read_file(input_filename) {
+        Ok(instruction_vectors) => instruction_vectors,
+        Err(error) => match error.kind() {
+            io::ErrorKind::NotFound => {
+                return Err("Input file (input.txt) not found in project root")
+            }
+            _ => {
+                eprintln!("{}", error);
+                return Err("Error reading input file");
+            }
+        },
+    };
 
     let output: Vec<Vec<Option<usize>>> = instruction_vectors
         .iter()
         .map(|instruction_vector| handle_instruction_vector(&mut scheduler, instruction_vector))
         .collect();
 
-    write_output(output_filename, &output)?;
+    match write_output(output_filename, &output) {
+        Ok(_) => (),
+        Err(error) => {
+            eprintln!("{}", error);
+            return Err("Error writing to output file");
+        }
+    }
 
     Ok(())
 }

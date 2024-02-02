@@ -508,3 +508,26 @@ fn multiple_requests() {
         }
     );
 }
+
+#[test]
+fn release_not_holding() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(1);
+    assert_eq!(scheduler.release(1, 1), None);
+    scheduler.request(1, 1);
+    scheduler.create(2);
+    assert_eq!(scheduler.release(1, 1), None);
+}
+
+#[test]
+fn lowest_pid_value() {
+    let mut scheduler = Scheduler::new();
+
+    scheduler.create(1);
+    scheduler.create(2);
+    scheduler.create(2);
+    scheduler.create(2);
+    scheduler.destroy(1);
+    assert_eq!(scheduler.create(2), Some(2));
+}
